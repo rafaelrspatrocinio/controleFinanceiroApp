@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f3">
+  <title>Meu Caixa</title>
+  <link rel="stylesheet" th:href="@{/styles.css}">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div><p class="eyebrow">CONTROLE FINANCEIRO PESSOAL</p><h1>Meu Caixa</h1><p class="muted">Seu dinheiro, organizado num só lugar.</p></div>
+      <div class="actions">
+        <a class="button button-outline" href="/backup.csv">Exportar cópia</a>
+        <button class="button button-outline" type="button" onclick="document.getElementById('import-dialog').showModal()">Importar cópia</button>
+        <button class="button button-outline" type="button" onclick="document.getElementById('settings-dialog').showModal()">Ajustes</button>
+      </div>
+    </header>
+
+    <div class="notice success" th:if="${message}" th:text="${message}"></div>
+    <div class="notice error" th:if="${error}" th:text="${error}"></div>
+
+    <section class="monthbar" aria-label="Navegação por mês">
+      <a class="month-arrow" th:href="@{/(month=${month.minusMonths(1)})}" aria-label="Mês anterior">‹</a>
+      <h2 th:text="${monthLabel}">Mês</h2>
+      <a class="month-arrow" th:href="@{/(month=${month.plusMonths(1)})}" aria-label="Próximo mês">›</a>
+    </section>
+
+    <section class="summary" aria-label="Resumo financeiro">
+      <article class="card balance-card"><p th:text="'SALDO EM ' + ${balanceDate}">SALDO EM 09/11/2026</p><strong th:text="${balance}">R$ 0,00</strong></article>
+      <article class="card"><p>ENTRADAS NO MÊS</p><strong class="income" th:text="${income}">R$ 0,00</strong></article>
+      <article class="card"><p>SAÍDAS NO MÊS</p><strong class="expense" th:text="${expenses}">R$ 0,00</strong></article>
+    </section>
+
+    <section class="card form-card">
+      <div><p class="eyebrow">NOVO MOVIMENTO</p><h2>Adicionar lançamento</h2></div>
+      <form class="transaction-form" method="post" action="/transactions">
+        <label>Tipo<select name="type" id="type" required><option value="EXPENSE">Despesa</option><option value="INCOME">Receita</option></select></label>
+        <label>Valor (R$)<input name="amount" inputmode="decimal" placeholder="0,00" required></label>
+        <label>Descrição<input name="description" maxlength="500" placeholder="Ex.: mercado" required></label>
+        <label>Data<input name="date" type="date" th:value="${month.atDay(1)}" required></label>
+        <label>Categoria<select name="category" id="category" required><option th:each="category : ${categories}" th:value="${category}" th:text="${category}" th:selected="${category == 'Mercado'}"></option></select></label>
+        <button class="button button-primary" type="submit">+ Salvar lançamento</button>
+      </form>
+    </section>
+
+    <section class="card movements">
+      <div class="section-heading"><div><p class="eyebrow">HISTÓRICO</p><h2>Movimentos do mês</h2></div>
+        <form method="post" action="/transactions/clear" onsubmit="return confirm('Excluir permanentemente todos os lançamentos deste mês? Os demais meses e o saldo inicial serão mantidos.');">
+          <input type="hidden" name="month" th:value="${month}"><button class="button button-danger-outline" type="submit" th:disabled="${transactions.isEmpty()}">Limpar mês</button>
+        </form>
+      </div>
+      <div class="table-scroll" th:if="${!transactions.isEmpty()}">
+        <table><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th class="amount">Valor</th><th></th></tr></thead>
+          <tbody><tr th:each="transaction : ${transactions}">
+            <td th:text="${#temporals.format(transaction.date, 'dd/MM/yyyy')}">01/01/2026</td>
+            <td><span class="badge" th:classappend="${transaction.type.name() == 'INCOME' ? ' badge-income' : ' badge-expense'}" th:text="${transaction.type.label}">Despesa</span></td>
+            <td class="description" th:text="${transaction.description}">Descrição</td><td th:text="${transaction.category}">Categoria</td>
+            <td class="amount" th:classappend="${transaction.type.name() == 'INCOME' ? ' income' : ' expense'}" th:text="${(transaction.type.name() == 'INCOME' ? '+' : '−') + #numbers.formatDecimal(transaction.amountCents / 100.0, 1, 'POINT', 2, 'COMMA')}">R$ 0,00</td>
+            <td><form method="post" th:action="@{/transactions/{id}/delete(id=${transaction.id})}" onsubmit="return confirm('Excluir este lançamento?');"><input type="hidden" name="month" th:value="${month}"><button class="icon-button" type="submit" th:attr="aria-label='Excluir ' + ${transaction.description}">Excluir</button></form></td>
+          </tr></tbody>
+        </table>
+      </div>
+      <div class="empty" th:if="${transactions.isEmpty()}"><span>◇</span><p>Nenhum lançamento neste mês</p><small>Adicione um movimento usando o formulário acima.</small></div>
+    </section>
+    <section class="monthly-surplus" aria-label="Resultado do mês">
+      <div><p class="eyebrow">RESULTADO DO MÊS</p><h2>Sobra do mês</h2><small>Receitas menos despesas registradas no mês selecionado</small></div>
+      <strong th:classappend="${monthlySurplus.startsWith('-') ? ' expense' : ' income'}" th:text="${monthlySurplus}">R$ 0,00</strong>
+    </section>
+    <footer>Seus dados são mantidos localmente neste computador.</footer>
+  </main>
+
+  <dialog id="settings-dialog"><form method="post" action="/settings"><div class="dialog-heading"><h2>Ajustes</h2><button class="icon-button" type="button" onclick="this.closest('dialog').close()">Fechar</button></div><input type="hidden" name="month" th:value="${month}"><label>Saldo inicial (R$)<input name="openingBalance" inputmode="decimal" th:value="${openingBalance}" required></label><p class="muted">O saldo de referência anterior aos lançamentos.</p><button class="button button-primary" type="submit">Salvar saldo</button></form></dialog>
+  <dialog id="import-dialog"><form method="post" action="/backup.csv" enctype="multipart/form-data"><div class="dialog-heading"><h2>Importar cópia</h2><button class="icon-button" type="button" onclick="this.closest('dialog').close()">Fechar</button></div><input type="hidden" name="month" th:value="${month}"><label>Arquivo CSV<input type="file" name="file" accept=".csv,text/csv" required></label><p class="muted">A importação substitui os lançamentos atuais após confirmação.</p><button class="button button-primary" type="submit" onclick="return confirm('Importar esta cópia substituirá todos os lançamentos atuais. Continuar?')">Importar cópia</button></form></dialog>
+  <script>
+    document.getElementById('type').addEventListener('change', function () {
+      document.getElementById('category').value = this.value === 'INCOME' ? 'Renda Variável' : 'Mercado';
+    });
+  </script>
+</body>
+</html>

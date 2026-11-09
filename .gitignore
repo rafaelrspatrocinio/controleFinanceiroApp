@@ -1,0 +1,5 @@
+target/
+*.log
+*.tmp
+controleFinanceiroApp/
+src/main/resources/seed.csv

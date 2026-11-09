@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+.vscode/
+*.log
+*.tmp
+controleFinanceiroApp/
+src/main/resources/seed.csv
