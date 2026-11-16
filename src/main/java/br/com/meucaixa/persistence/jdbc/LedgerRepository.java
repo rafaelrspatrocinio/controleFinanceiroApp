@@ -20,7 +20,7 @@ public class LedgerRepository {
         public Transaction mapRow(ResultSet rs, int rowNum) throws SQLException {
             return new Transaction(rs.getLong("id"), Transaction.Type.valueOf(rs.getString("type")),
                     rs.getLong("amount_cents"), rs.getString("category"), rs.getString("description"),
-                    rs.getDate("date").toLocalDate());
+                    rs.getDate("date").toLocalDate(), rs.getBoolean("paid"));
         }
     };
 
@@ -29,11 +29,18 @@ public class LedgerRepository {
     }
 
     public List<Transaction> findAll() {
-        return jdbc.query("SELECT id, type, amount_cents, category, description, date FROM transactions ORDER BY date DESC, id DESC", transactionMapper);
+        return jdbc.query("SELECT id, type, amount_cents, category, description, date, paid FROM transactions ORDER BY date DESC, id DESC", transactionMapper);
     }
 
     public List<Transaction> findAllByIdAscending() {
-        return jdbc.query("SELECT id, type, amount_cents, category, description, date FROM transactions ORDER BY id", transactionMapper);
+        return jdbc.query("SELECT id, type, amount_cents, category, description, date, paid FROM transactions ORDER BY id", transactionMapper);
+    }
+
+    public Transaction findById(long id) {
+        List<Transaction> results = jdbc.query(
+                "SELECT id, type, amount_cents, category, description, date, paid FROM transactions WHERE id = ?",
+                transactionMapper, id);
+        return results.isEmpty() ? null : results.get(0);
     }
 
     public boolean isEmpty() {
@@ -57,9 +64,18 @@ public class LedgerRepository {
 
     @Transactional
     public void insert(Transaction transaction) {
-        jdbc.update("INSERT INTO transactions (id, type, amount_cents, category, description, date) VALUES (?, ?, ?, ?, ?, ?)",
+        jdbc.update("INSERT INTO transactions (id, type, amount_cents, category, description, date, paid) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 transaction.getId(), transaction.getType().name(), transaction.getAmountCents(),
-                transaction.getCategory(), transaction.getDescription(), java.sql.Date.valueOf(transaction.getDate()));
+                transaction.getCategory(), transaction.getDescription(), java.sql.Date.valueOf(transaction.getDate()),
+                transaction.isPaid());
+    }
+
+    @Transactional
+    public boolean update(Transaction transaction) {
+        return jdbc.update("UPDATE transactions SET type = ?, amount_cents = ?, category = ?, description = ?, date = ?, paid = ? WHERE id = ?",
+                transaction.getType().name(), transaction.getAmountCents(), transaction.getCategory(),
+                transaction.getDescription(), java.sql.Date.valueOf(transaction.getDate()), transaction.isPaid(),
+                transaction.getId()) > 0;
     }
 
     @Transactional

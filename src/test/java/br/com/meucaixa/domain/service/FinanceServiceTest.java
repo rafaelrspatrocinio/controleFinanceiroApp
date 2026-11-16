@@ -14,7 +14,7 @@ public final class FinanceServiceTest {
     public static void main(String[] args) throws Exception {
         List<Transaction> rows = new ArrayList<Transaction>();
         rows.add(new Transaction(1, Transaction.Type.INCOME, 250000, "Salário", "Pagamento, com \"detalhe\"", LocalDate.parse("2026-08-01")));
-        rows.add(new Transaction(2, Transaction.Type.EXPENSE, 70000, "Casa", "Aluguel", LocalDate.parse("2026-08-04")));
+        rows.add(new Transaction(2, Transaction.Type.EXPENSE, 70000, "Casa", "Aluguel", LocalDate.parse("2026-08-04"), true));
         rows.add(new Transaction(3, Transaction.Type.INCOME, 50000, "Extra", "Venda", LocalDate.parse("2026-09-02")));
         YearMonth august = YearMonth.of(2026, 8);
         check(FinanceService.incomeForMonth(rows, august) == 250000, "Soma das receitas do mês");
@@ -40,6 +40,7 @@ public final class FinanceServiceTest {
         }
         check(rejected, "Rejeita precisão monetária inválida");
         check(backupRoundTrip(rows), "Exportação e importação CSV com aspas e vírgulas");
+        checkLegacyBackupCompatibility();
         checkSeedAndLocalPersistence();
         System.out.println("FinanceService tests passed.");
     }
@@ -52,8 +53,21 @@ public final class FinanceServiceTest {
             if (restored.size() != transactions.size()) return false;
             for (int index = 0; index < restored.size(); index++) {
                 if (!restored.get(index).getDescription().equals(transactions.get(index).getDescription())) return false;
+                if (restored.get(index).isPaid() != transactions.get(index).isPaid()) return false;
             }
             return true;
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
+
+    private static void checkLegacyBackupCompatibility() throws Exception {
+        Path file = Files.createTempFile("meu-caixa-legacy-", ".csv");
+        try {
+            Files.write(file, ("id,type,amount_cents,category,description,date\n"
+                    + "1,EXPENSE,1500,Conta,Conta antiga,2026-08-04\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            List<Transaction> imported = LedgerStore.readBackup(file);
+            check(imported.size() == 1 && !imported.get(0).isPaid(), "Cópias antigas permanecem compatíveis");
         } finally {
             Files.deleteIfExists(file);
         }
@@ -67,11 +81,12 @@ public final class FinanceServiceTest {
             check(seed.isEmpty(), "Instalação sem dados pessoais de exemplo");
             List<Transaction> sample = new ArrayList<Transaction>();
             sample.add(new Transaction(1, Transaction.Type.INCOME, 250000, "Salário", "Pagamento de teste", LocalDate.of(2026, 8, 1)));
-            sample.add(new Transaction(2, Transaction.Type.EXPENSE, 70000, "Casa", "Aluguel de teste", LocalDate.of(2026, 8, 4)));
+            sample.add(new Transaction(2, Transaction.Type.EXPENSE, 70000, "Casa", "Aluguel de teste", LocalDate.of(2026, 8, 4), true));
             store.saveOpeningBalance(765432);
             store.saveTransactions(sample);
             LedgerStore reopened = new LedgerStore(directory);
             check(reopened.loadTransactions().size() == 2, "Persistência dos movimentos locais");
+            check(reopened.loadTransactions().get(1).isPaid(), "Persistência do status de pagamento local");
             check(reopened.loadOpeningBalance() == 765432, "Persistência do saldo inicial");
             reopened.saveTransactions(new ArrayList<Transaction>());
             check(new LedgerStore(directory).loadTransactions().isEmpty(), "Limpeza persistente de todos os movimentos");

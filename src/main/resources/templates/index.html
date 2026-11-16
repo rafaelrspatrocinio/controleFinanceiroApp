@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f6f3">
   <title>Meu Caixa</title>
-  <link rel="stylesheet" th:href="@{/styles.css}">
+  <link rel="stylesheet" th:href="@{/styles.css(v='20261116-5')}">
 </head>
 <body>
   <main class="shell">
@@ -58,7 +58,15 @@
             <td><span class="badge" th:classappend="${transaction.type.name() == 'INCOME' ? ' badge-income' : ' badge-expense'}" th:text="${transaction.type.label}">Despesa</span></td>
             <td class="description" th:text="${transaction.description}">Descrição</td><td th:text="${transaction.category}">Categoria</td>
             <td class="amount" th:classappend="${transaction.type.name() == 'INCOME' ? ' income' : ' expense'}" th:text="${(transaction.type.name() == 'INCOME' ? '+' : '−') + #numbers.formatDecimal(transaction.amountCents / 100.0, 1, 'POINT', 2, 'COMMA')}">R$ 0,00</td>
-            <td><form method="post" th:action="@{/transactions/{id}/delete(id=${transaction.id})}" onsubmit="return confirm('Excluir este lançamento?');"><input type="hidden" name="month" th:value="${month}"><button class="icon-button" type="submit" th:attr="aria-label='Excluir ' + ${transaction.description}">Excluir</button></form></td>
+            <td class="row-actions">
+              <form class="paid-form" method="post" th:if="${transaction.type.name() == 'EXPENSE'}" th:action="@{/transactions/{id}/paid(id=${transaction.id})}">
+                <input type="hidden" name="month" th:value="${month}">
+                <label class="paid-toggle" th:classappend="${transaction.paid ? ' paid-checked' : ''}"><input type="checkbox" name="paid" value="true" th:checked="${transaction.paid}" th:attr="aria-label=${transaction.paid ? 'Marcar como pendente' : 'Marcar como paga'}" onchange="this.form.submit()"><span th:text="${transaction.paid ? 'Pago' : 'Pendente'}">Pendente</span></label>
+              </form>
+              <button class="icon-button edit-button" type="button" th:attr="aria-label='Editar ' + ${transaction.description}, data-id=${transaction.id}, data-type=${transaction.type.name()}, data-amount=${#numbers.formatDecimal(transaction.amountCents / 100.0, 1, 'POINT', 2, 'COMMA')}, data-category=${transaction.category}, data-description=${transaction.description}, data-date=${transaction.date}" onclick="openEditDialog(this)">Editar</button>
+              <button class="icon-button copy-button" type="button" th:attr="aria-label='Copiar ' + ${transaction.description} + ' para o próximo mês', onclick=|openCopyDialog(${transaction.id}, '${#numbers.formatDecimal(transaction.amountCents / 100.0, 1, 'POINT', 2, 'COMMA')}')|">Copiar p/ próximo mês</button>
+              <form method="post" th:action="@{/transactions/{id}/delete(id=${transaction.id})}" onsubmit="return confirm('Excluir este lançamento?');"><input type="hidden" name="month" th:value="${month}"><button class="icon-button delete-button" type="submit" th:attr="aria-label='Excluir ' + ${transaction.description}">Excluir</button></form>
+            </td>
           </tr></tbody>
         </table>
       </div>
@@ -73,6 +81,45 @@
 
   <dialog id="settings-dialog"><form method="post" action="/settings"><div class="dialog-heading"><h2>Ajustes</h2><button class="icon-button" type="button" onclick="this.closest('dialog').close()">Fechar</button></div><input type="hidden" name="month" th:value="${month}"><label>Saldo inicial (R$)<input name="openingBalance" inputmode="decimal" th:value="${openingBalance}" required></label><p class="muted">O saldo de referência anterior aos lançamentos.</p><button class="button button-primary" type="submit">Salvar saldo</button></form></dialog>
   <dialog id="import-dialog"><form method="post" action="/backup.csv" enctype="multipart/form-data"><div class="dialog-heading"><h2>Importar cópia</h2><button class="icon-button" type="button" onclick="this.closest('dialog').close()">Fechar</button></div><input type="hidden" name="month" th:value="${month}"><label>Arquivo CSV<input type="file" name="file" accept=".csv,text/csv" required></label><p class="muted">A importação substitui os lançamentos atuais após confirmação.</p><button class="button button-primary" type="submit" onclick="return confirm('Importar esta cópia substituirá todos os lançamentos atuais. Continuar?')">Importar cópia</button></form></dialog>
+  <dialog id="edit-dialog">
+    <form id="edit-form" method="post" action="/transactions/0/edit">
+      <div class="dialog-heading"><h2>Editar lançamento</h2><button class="icon-button" type="button" onclick="this.closest('dialog').close()">Fechar</button></div>
+      <input type="hidden" name="month" th:value="${month}">
+      <label>Tipo<select id="edit-type" name="type" required><option value="EXPENSE">Despesa</option><option value="INCOME">Receita</option></select></label>
+      <label>Valor (R$)<input id="edit-amount" name="amount" inputmode="decimal" required></label>
+      <label>Descrição<input id="edit-description" name="description" maxlength="500" required></label>
+      <label>Data<input id="edit-date" name="date" type="date" required></label>
+      <label>Categoria<select id="edit-category" name="category" required><option th:each="category : ${categories}" th:value="${category}" th:text="${category}"></option></select></label>
+      <button class="button button-primary" type="submit">Salvar alterações</button>
+    </form>
+  </dialog>
+  <dialog id="copy-dialog">
+    <form id="copy-form" method="post" action="/transactions/0/copy-next-month">
+      <div class="dialog-heading"><h2>Copiar para o próximo mês</h2><button class="icon-button" type="button" onclick="this.closest('dialog').close()">Fechar</button></div>
+      <input type="hidden" name="month" th:value="${month}">
+      <label>Valor (R$)<input id="copy-amount" name="amount" inputmode="decimal" placeholder="0,00" required></label>
+      <p class="muted">O lançamento será duplicado um mês para a frente, com o valor informado.</p>
+      <button class="button button-primary" type="submit">Copiar lançamento</button>
+    </form>
+  </dialog>
+  <script>
+    function openEditDialog(button) {
+      const form = document.getElementById('edit-form');
+      form.action = '/transactions/' + button.dataset.id + '/edit';
+      document.getElementById('edit-type').value = button.dataset.type;
+      document.getElementById('edit-amount').value = button.dataset.amount;
+      document.getElementById('edit-description').value = button.dataset.description;
+      document.getElementById('edit-date').value = button.dataset.date;
+      document.getElementById('edit-category').value = button.dataset.category;
+      document.getElementById('edit-dialog').showModal();
+    }
+
+    function openCopyDialog(id, amount) {
+      document.getElementById('copy-form').action = '/transactions/' + id + '/copy-next-month';
+      document.getElementById('copy-amount').value = amount;
+      document.getElementById('copy-dialog').showModal();
+    }
+  </script>
   <script>
     document.getElementById('type').addEventListener('change', function () {
       document.getElementById('category').value = this.value === 'INCOME' ? 'Renda Variável' : 'Mercado';

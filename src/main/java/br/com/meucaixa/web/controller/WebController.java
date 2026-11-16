@@ -79,11 +79,77 @@ public class WebController {
         return "redirect:/";
     }
 
+    @PostMapping("/transactions/{id}/edit")
+    public String editTransaction(@PathVariable long id, @RequestParam String type, @RequestParam String amount,
+            @RequestParam String category, @RequestParam String description, @RequestParam String date,
+            @RequestParam String month, RedirectAttributes redirect) {
+        try {
+            Transaction existing = repository.findById(id);
+            if (existing == null) {
+                redirect.addFlashAttribute("error", "O lançamento não foi encontrado.");
+                redirect.addAttribute("month", parseMonth(month));
+                return "redirect:/";
+            }
+            Transaction.Type updatedType = Transaction.Type.fromLabel(type);
+            Transaction transaction = new Transaction(id, updatedType, parseMoney(amount), category, description,
+                    LocalDate.parse(date), updatedType == Transaction.Type.EXPENSE && existing.isPaid());
+            if (repository.update(transaction)) {
+                redirect.addFlashAttribute("message", "Lançamento atualizado.");
+                redirect.addAttribute("month", YearMonth.from(transaction.getDate()));
+            } else {
+                redirect.addFlashAttribute("error", "O lançamento não foi encontrado.");
+                redirect.addAttribute("month", parseMonth(month));
+            }
+        } catch (RuntimeException exception) {
+            redirect.addFlashAttribute("error", safeMessage(exception, "Confira os dados do lançamento."));
+            redirect.addAttribute("month", parseMonth(month));
+        }
+        return "redirect:/";
+    }
+
+    @PostMapping("/transactions/{id}/paid")
+    public String setTransactionPaid(@PathVariable long id, @RequestParam String month,
+            @RequestParam(value = "paid", defaultValue = "false") boolean paid, RedirectAttributes redirect) {
+        Transaction existing = repository.findById(id);
+        if (existing == null || existing.getType() != Transaction.Type.EXPENSE) {
+            redirect.addFlashAttribute("error", "Não foi possível atualizar o pagamento da despesa.");
+        } else {
+            Transaction updated = new Transaction(existing.getId(), existing.getType(), existing.getAmountCents(),
+                    existing.getCategory(), existing.getDescription(), existing.getDate(), paid);
+            repository.update(updated);
+        }
+        redirect.addAttribute("month", parseMonth(month));
+        return "redirect:/";
+    }
+
     @PostMapping("/transactions/{id}/delete")
     public String deleteTransaction(@PathVariable long id, @RequestParam String month, RedirectAttributes redirect) {
         if (repository.delete(id)) redirect.addFlashAttribute("message", "Lançamento excluído.");
         else redirect.addFlashAttribute("error", "O lançamento não foi encontrado.");
         redirect.addAttribute("month", parseMonth(month));
+        return "redirect:/";
+    }
+
+    @PostMapping("/transactions/{id}/copy-next-month")
+    public String copyToNextMonth(@PathVariable long id, @RequestParam String amount,
+            @RequestParam String month, RedirectAttributes redirect) {
+        Transaction original = repository.findById(id);
+        if (original == null) {
+            redirect.addFlashAttribute("error", "O lançamento não foi encontrado.");
+            redirect.addAttribute("month", parseMonth(month));
+            return "redirect:/";
+        }
+        try {
+            LocalDate nextMonthDate = original.getDate().plusMonths(1);
+            Transaction copy = new Transaction(repository.nextId(), original.getType(), parseMoney(amount),
+                    original.getCategory(), original.getDescription(), nextMonthDate);
+            repository.insert(copy);
+            redirect.addAttribute("month", YearMonth.from(copy.getDate()));
+            redirect.addFlashAttribute("message", "Lançamento copiado para " + YearMonth.from(copy.getDate()) + ".");
+        } catch (RuntimeException exception) {
+            redirect.addFlashAttribute("error", safeMessage(exception, "Não foi possível copiar o lançamento."));
+            redirect.addAttribute("month", parseMonth(month));
+        }
         return "redirect:/";
     }
 

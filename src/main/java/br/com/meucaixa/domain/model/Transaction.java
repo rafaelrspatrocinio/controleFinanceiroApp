@@ -32,8 +32,13 @@ public final class Transaction {
     private final String category;
     private final String description;
     private final LocalDate date;
+    private final boolean paid;
 
     public Transaction(long id, Type type, long amountCents, String category, String description, LocalDate date) {
+        this(id, type, amountCents, category, description, date, false);
+    }
+
+    public Transaction(long id, Type type, long amountCents, String category, String description, LocalDate date, boolean paid) {
         if (id <= 0) throw new IllegalArgumentException("O identificador deve ser positivo.");
         if (type == null) throw new IllegalArgumentException("Escolha receita ou despesa.");
         if (amountCents <= 0) throw new IllegalArgumentException("O valor deve ser maior que zero.");
@@ -46,6 +51,7 @@ public final class Transaction {
         this.category = category.trim();
         this.description = description.trim();
         this.date = date;
+        this.paid = type == Type.EXPENSE && paid;
     }
 
     public long getId() { return id; }
@@ -54,6 +60,7 @@ public final class Transaction {
     public String getCategory() { return category; }
     public String getDescription() { return description; }
     public LocalDate getDate() { return date; }
+    public boolean isPaid() { return paid; }
 
     public long signedAmountCents() {
         return type == Type.INCOME ? amountCents : -amountCents;

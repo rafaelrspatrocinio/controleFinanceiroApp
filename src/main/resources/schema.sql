@@ -4,8 +4,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount_cents BIGINT NOT NULL CHECK (amount_cents > 0),
     category VARCHAR(120) NOT NULL,
     description VARCHAR(500) NOT NULL,
-    date DATE NOT NULL
+    date DATE NOT NULL,
+    paid BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS paid BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS ledger_settings (
     id INTEGER PRIMARY KEY,

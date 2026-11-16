@@ -19,7 +19,8 @@ import java.util.List;
 import java.util.Properties;
 
 public final class LedgerStore {
-    private static final String HEADER = "id,type,amount_cents,category,description,date";
+    private static final String HEADER = "id,type,amount_cents,category,description,date,paid";
+    private static final String LEGACY_HEADER = "id,type,amount_cents,category,description,date";
     private final Path directory;
     private final Path transactionsFile;
     private final Path settingsFile;
@@ -43,18 +44,21 @@ public final class LedgerStore {
         List<Transaction> result = new ArrayList<Transaction>();
         try (BufferedReader reader = Files.newBufferedReader(transactionsFile, StandardCharsets.UTF_8)) {
             String line = reader.readLine();
-            if (line == null || !line.replace("\uFEFF", "").equals(HEADER)) {
+            if (line == null || !(line.replace("\uFEFF", "").equals(HEADER)
+                    || line.replace("\uFEFF", "").equals(LEGACY_HEADER))) {
                 throw new IOException("O arquivo de lançamentos está inválido. Restaure uma cópia CSV válida.");
             }
+            boolean hasPaidColumn = line.replace("\uFEFF", "").equals(HEADER);
             int lineNumber = 1;
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
                 if (line.trim().isEmpty()) continue;
                 try {
                     List<String> fields = parseCsvLine(line);
-                    if (fields.size() != 6) throw new IllegalArgumentException("Quantidade de colunas inválida.");
+                    if (fields.size() != (hasPaidColumn ? 7 : 6)) throw new IllegalArgumentException("Quantidade de colunas inválida.");
                     result.add(new Transaction(Long.parseLong(fields.get(0)), Transaction.Type.fromLabel(fields.get(1)),
-                            Long.parseLong(fields.get(2)), fields.get(3), fields.get(4), LocalDate.parse(fields.get(5))));
+                            Long.parseLong(fields.get(2)), fields.get(3), fields.get(4), LocalDate.parse(fields.get(5)),
+                            hasPaidColumn && Boolean.parseBoolean(fields.get(6))));
                 } catch (RuntimeException exception) {
                     throw new IOException("Registro inválido na linha " + lineNumber + " do arquivo local.", exception);
                 }
@@ -74,7 +78,8 @@ public final class LedgerStore {
                 Collections.sort(ordered, Comparator.comparingLong(Transaction::getId));
                 for (Transaction transaction : ordered) {
                     writer.write(transaction.getId() + "," + transaction.getType().name() + "," + transaction.getAmountCents()
-                            + "," + csv(transaction.getCategory()) + "," + csv(transaction.getDescription()) + "," + transaction.getDate());
+                            + "," + csv(transaction.getCategory()) + "," + csv(transaction.getDescription()) + "," + transaction.getDate()
+                            + "," + transaction.isPaid());
                     writer.newLine();
                 }
             }
@@ -123,17 +128,20 @@ public final class LedgerStore {
         List<Transaction> result = new ArrayList<Transaction>();
         try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             String header = reader.readLine();
-            if (header == null || !header.replace("\uFEFF", "").equals(HEADER)) {
+            if (header == null || !(header.replace("\uFEFF", "").equals(HEADER)
+                    || header.replace("\uFEFF", "").equals(LEGACY_HEADER))) {
                 throw new IOException("Selecione um arquivo de cópia CSV do Meu Caixa.");
             }
+            boolean hasPaidColumn = header.replace("\uFEFF", "").equals(HEADER);
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) continue;
                 List<String> fields = parseCsvLine(line);
-                if (fields.size() != 6) throw new IOException("A cópia contém uma linha inválida.");
+                if (fields.size() != (hasPaidColumn ? 7 : 6)) throw new IOException("A cópia contém uma linha inválida.");
                 try {
                     result.add(new Transaction(Long.parseLong(fields.get(0)), Transaction.Type.fromLabel(fields.get(1)),
-                            Long.parseLong(fields.get(2)), fields.get(3), fields.get(4), LocalDate.parse(fields.get(5))));
+                            Long.parseLong(fields.get(2)), fields.get(3), fields.get(4), LocalDate.parse(fields.get(5)),
+                            hasPaidColumn && Boolean.parseBoolean(fields.get(6))));
                 } catch (RuntimeException exception) {
                     throw new IOException("A cópia contém valores inválidos.", exception);
                 }
@@ -152,7 +160,8 @@ public final class LedgerStore {
             writer.newLine();
             for (Transaction transaction : transactions) {
                 writer.write(transaction.getId() + "," + transaction.getType().name() + "," + transaction.getAmountCents()
-                        + "," + csv(transaction.getCategory()) + "," + csv(transaction.getDescription()) + "," + transaction.getDate());
+                        + "," + csv(transaction.getCategory()) + "," + csv(transaction.getDescription()) + "," + transaction.getDate()
+                        + "," + transaction.isPaid());
                 writer.newLine();
             }
         }
